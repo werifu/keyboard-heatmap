@@ -1,13 +1,12 @@
 use std::sync::MutexGuard;
 
 use crate::{
-    app::PressTimesMap,
-    color::{get_color, get_strike_color},
     key_box::{KeyBox, KeyTextsLayout},
+    press_time_map::PressTimesMap,
 };
-use eframe::epaint::text::layout;
-use egui::{text::LayoutJob, Align2, Button, Color32, Galley, RichText, Sense, Stroke, Ui, Vec2};
-use egui_extras::StripBuilder;
+
+use egui::{Color32, Sense, Ui, Vec2};
+
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Copy, PartialEq, Deserialize, Serialize)]

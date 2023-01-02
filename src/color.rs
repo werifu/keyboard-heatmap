@@ -10,7 +10,7 @@ pub fn sigmoid(times: u32) -> f32 {
     res
 }
 
-/// a function
+/// Decides color of the key by hue (as a theme) and times key pressed
 pub fn get_color(hue: f32, times: u32) -> Color32 {
     // let h = 220. / 360.;
     let k = (0.3 - 0.98) / 1.;

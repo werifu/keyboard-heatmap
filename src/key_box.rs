@@ -1,4 +1,4 @@
-use egui::{Vec2, Ui, Sense, Color32, Align2, Stroke, RichText};
+use egui::{Align2, Color32, RichText, Sense, Stroke, Ui, Vec2};
 
 use crate::color::{get_color, get_strike_color};
 
@@ -9,6 +9,7 @@ pub enum KeyTextsLayout {
     Center1(String),
 }
 /// component of a key on a keyboard
+#[allow(dead_code)]
 pub struct KeyBox {
     size: Vec2,
     rounding: f32,

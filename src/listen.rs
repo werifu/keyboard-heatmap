@@ -1,4 +1,4 @@
-use std::{sync::mpsc::SyncSender, time::SystemTime};
+use std::sync::mpsc::SyncSender;
 
 use rdev::listen as listen_event;
 

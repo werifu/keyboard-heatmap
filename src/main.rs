@@ -6,6 +6,7 @@ mod color;
 mod key_box;
 mod keyboard;
 mod listen;
+mod press_time_map;
 
 fn main() {
     let native_options = eframe::NativeOptions {
