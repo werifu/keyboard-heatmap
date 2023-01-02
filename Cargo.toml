@@ -1,0 +1,17 @@
+[package]
+name = "keyboard-heatmap"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+rdev = { git = "https://github.com/werifu/rdev.git", branch = "empty-name" }
+lazy_static = "1.4"
+eframe = "0.20.1"
+egui = "0.20.1"
+egui_extras = "0.20.0"
+image = "0.24.5"
+serde = "1.0.151"
+native-dialog = "0.6.3"
+chrono = "0.4.23"
