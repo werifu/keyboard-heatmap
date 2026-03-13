@@ -15,6 +15,12 @@ pub enum KeyboardType {
     Qwerty87,
 }
 
+#[derive(Clone)]
+pub struct KeyPreviewSpec {
+    pub layout: KeyTextsLayout,
+    pub width_units: f32,
+}
+
 impl KeyboardType {
     pub fn description(&self) -> &'static str {
         match self {
@@ -24,16 +30,16 @@ impl KeyboardType {
     }
 }
 
-pub fn key_preview_label(keyboard_type: KeyboardType, key: rdev::Key) -> Option<String> {
+pub fn key_preview_spec(keyboard_type: KeyboardType, key: rdev::Key) -> Option<KeyPreviewSpec> {
     if let Some(label) = FN_KEYS_PAIRS
         .iter()
-        .find_map(|(label, candidate)| (*candidate == key).then(|| (*label).to_string()))
+        .find_map(|(label, candidate)| (*candidate == key).then(|| single_label(*label, 1.0)))
     {
         return Some(label);
     }
 
     if let Some(label) = NUM_KEY_LINE_PAIRS.iter().find_map(|(top, bottom, candidate)| {
-        (*candidate == key).then(|| format!("{top} {bottom}"))
+        (*candidate == key).then(|| double_label(*top, *bottom, 1.0))
     }) {
         return Some(label);
     }
@@ -42,76 +48,90 @@ pub fn key_preview_label(keyboard_type: KeyboardType, key: rdev::Key) -> Option<
         .iter()
         .chain(SECOND_ALPHA_LINE_PAIRS.iter())
         .chain(THIRD_ALPHA_LINE_PAIRS.iter())
-        .find_map(|(label, candidate)| (*candidate == key).then(|| (*label).to_string()))
+        .find_map(|(label, candidate)| (*candidate == key).then(|| single_label(*label, 1.0)))
     {
         return Some(label);
     }
 
     Some(match keyboard_type {
         KeyboardType::QwertyMac => match key {
-            rdev::Key::Escape => "Esc".to_string(),
-            rdev::Key::Unknown(0) => "Power".to_string(),
-            rdev::Key::Backspace => "Back".to_string(),
-            rdev::Key::Tab => "Tab".to_string(),
-            rdev::Key::LeftBracket => "[ {".to_string(),
-            rdev::Key::RightBracket => "] }".to_string(),
-            rdev::Key::BackSlash => "\\ |".to_string(),
-            rdev::Key::CapsLock => "Caps Lock".to_string(),
-            rdev::Key::SemiColon => ": ;".to_string(),
-            rdev::Key::Quote => "\" '".to_string(),
-            rdev::Key::Return => "Enter".to_string(),
-            rdev::Key::ShiftLeft | rdev::Key::ShiftRight => "Shift".to_string(),
-            rdev::Key::Comma => "< ,".to_string(),
-            rdev::Key::Dot => "> .".to_string(),
-            rdev::Key::Slash => "? /".to_string(),
-            rdev::Key::Function => "Fn".to_string(),
-            rdev::Key::ControlLeft => "Ctrl".to_string(),
-            rdev::Key::Alt | rdev::Key::AltGr => "Opt".to_string(),
-            rdev::Key::MetaLeft | rdev::Key::MetaRight => "Cmd".to_string(),
-            rdev::Key::Space => "Space".to_string(),
-            rdev::Key::LeftArrow => "←".to_string(),
-            rdev::Key::UpArrow => "↑".to_string(),
-            rdev::Key::DownArrow => "↓".to_string(),
-            rdev::Key::RightArrow => "→".to_string(),
+            rdev::Key::Escape => single_label("Esc", 1.4),
+            rdev::Key::Unknown(0) => single_label("Power", 1.2),
+            rdev::Key::Backspace => single_label("Back", 1.4),
+            rdev::Key::Tab => single_label("Tab", 1.4),
+            rdev::Key::LeftBracket => double_label("[", "{", 1.0),
+            rdev::Key::RightBracket => double_label("]", "}", 1.0),
+            rdev::Key::BackSlash => double_label("\\", "|", 1.0),
+            rdev::Key::CapsLock => single_label("Caps", 1.7),
+            rdev::Key::SemiColon => double_label(":", ";", 1.0),
+            rdev::Key::Quote => double_label("\"", "'", 1.0),
+            rdev::Key::Return => single_label("Enter", 1.85),
+            rdev::Key::ShiftLeft | rdev::Key::ShiftRight => single_label("Shift", 2.2),
+            rdev::Key::Comma => double_label("<", ",", 1.0),
+            rdev::Key::Dot => double_label(">", ".", 1.0),
+            rdev::Key::Slash => double_label("?", "/", 1.0),
+            rdev::Key::Function => single_label("Fn", 1.0),
+            rdev::Key::ControlLeft => single_label("Ctrl", 1.0),
+            rdev::Key::Alt | rdev::Key::AltGr => single_label("Opt", 1.0),
+            rdev::Key::MetaLeft | rdev::Key::MetaRight => single_label("Cmd", 1.2),
+            rdev::Key::Space => single_label("Space", 5.6),
+            rdev::Key::LeftArrow => single_label("←", 1.0),
+            rdev::Key::UpArrow => single_label("↑", 1.0),
+            rdev::Key::DownArrow => single_label("↓", 1.0),
+            rdev::Key::RightArrow => single_label("→", 1.0),
             _ => return None,
         },
         KeyboardType::Qwerty87 => match key {
-            rdev::Key::Escape => "Esc".to_string(),
-            rdev::Key::PrintScreen => "PrtSc".to_string(),
-            rdev::Key::ScrollLock => "ScrLk".to_string(),
-            rdev::Key::Pause => "Pause".to_string(),
-            rdev::Key::Backspace => "Back".to_string(),
-            rdev::Key::Insert => "Ins".to_string(),
-            rdev::Key::Home => "Home".to_string(),
-            rdev::Key::PageUp => "PgUp".to_string(),
-            rdev::Key::Tab => "Tab".to_string(),
-            rdev::Key::LeftBracket => "[ {".to_string(),
-            rdev::Key::RightBracket => "] }".to_string(),
-            rdev::Key::BackSlash => "\\ |".to_string(),
-            rdev::Key::Delete => "Del".to_string(),
-            rdev::Key::End => "End".to_string(),
-            rdev::Key::PageDown => "PgDn".to_string(),
-            rdev::Key::CapsLock => "Caps Lock".to_string(),
-            rdev::Key::SemiColon => ": ;".to_string(),
-            rdev::Key::Quote => "\" '".to_string(),
-            rdev::Key::Return => "Enter".to_string(),
-            rdev::Key::ShiftLeft | rdev::Key::ShiftRight => "Shift".to_string(),
-            rdev::Key::Comma => "< ,".to_string(),
-            rdev::Key::Dot => "> .".to_string(),
-            rdev::Key::Slash => "? /".to_string(),
-            rdev::Key::ControlLeft | rdev::Key::ControlRight => "Ctrl".to_string(),
-            rdev::Key::MetaLeft => "Win".to_string(),
-            rdev::Key::Alt | rdev::Key::AltGr => "Alt".to_string(),
-            rdev::Key::Space => "Space".to_string(),
-            rdev::Key::Function => "Fn".to_string(),
-            rdev::Key::Unknown(110) => "Menu".to_string(),
-            rdev::Key::LeftArrow => "←".to_string(),
-            rdev::Key::UpArrow => "↑".to_string(),
-            rdev::Key::RightArrow => "→".to_string(),
-            rdev::Key::DownArrow => "↓".to_string(),
+            rdev::Key::Escape => single_label("Esc", 1.0),
+            rdev::Key::PrintScreen => single_label("PrtSc", 1.2),
+            rdev::Key::ScrollLock => single_label("ScrLk", 1.2),
+            rdev::Key::Pause => single_label("Pause", 1.2),
+            rdev::Key::Backspace => single_label("Back", 1.4),
+            rdev::Key::Insert => single_label("Ins", 1.0),
+            rdev::Key::Home => single_label("Home", 1.0),
+            rdev::Key::PageUp => single_label("PgUp", 1.0),
+            rdev::Key::Tab => single_label("Tab", 1.4),
+            rdev::Key::LeftBracket => double_label("[", "{", 1.0),
+            rdev::Key::RightBracket => double_label("]", "}", 1.0),
+            rdev::Key::BackSlash => double_label("\\", "|", 1.0),
+            rdev::Key::Delete => single_label("Del", 1.0),
+            rdev::Key::End => single_label("End", 1.0),
+            rdev::Key::PageDown => single_label("PgDn", 1.0),
+            rdev::Key::CapsLock => single_label("Caps", 1.7),
+            rdev::Key::SemiColon => double_label(":", ";", 1.0),
+            rdev::Key::Quote => double_label("\"", "'", 1.0),
+            rdev::Key::Return => single_label("Enter", 1.85),
+            rdev::Key::ShiftLeft | rdev::Key::ShiftRight => single_label("Shift", 2.2),
+            rdev::Key::Comma => double_label("<", ",", 1.0),
+            rdev::Key::Dot => double_label(">", ".", 1.0),
+            rdev::Key::Slash => double_label("?", "/", 1.0),
+            rdev::Key::ControlLeft | rdev::Key::ControlRight => single_label("Ctrl", 1.2),
+            rdev::Key::MetaLeft => single_label("Win", 1.2),
+            rdev::Key::Alt | rdev::Key::AltGr => single_label("Alt", 1.2),
+            rdev::Key::Space => single_label("Space", 6.0),
+            rdev::Key::Function => single_label("Fn", 1.0),
+            rdev::Key::Unknown(110) => single_label("Menu", 1.2),
+            rdev::Key::LeftArrow => single_label("←", 1.0),
+            rdev::Key::UpArrow => single_label("↑", 1.0),
+            rdev::Key::RightArrow => single_label("→", 1.0),
+            rdev::Key::DownArrow => single_label("↓", 1.0),
             _ => return None,
         },
     })
+}
+
+fn single_label(label: &str, width_units: f32) -> KeyPreviewSpec {
+    KeyPreviewSpec {
+        layout: KeyTextsLayout::Center1(label.to_string()),
+        width_units,
+    }
+}
+
+fn double_label(top: &str, bottom: &str, width_units: f32) -> KeyPreviewSpec {
+    KeyPreviewSpec {
+        layout: KeyTextsLayout::TopBottom((top.to_string(), bottom.to_string())),
+        width_units,
+    }
 }
 
 const FN_KEYS_PAIRS: [(&str, rdev::Key); 12] = [

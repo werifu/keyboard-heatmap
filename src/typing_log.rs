@@ -1,6 +1,9 @@
 use std::collections::VecDeque;
 
-use crate::keyboard::{self, KeyboardType};
+use crate::{
+    key_box::KeyTextsLayout,
+    keyboard::{self, KeyPreviewSpec, KeyboardType},
+};
 
 const DEFAULT_LOG_CAPACITY: usize = 1024;
 const PREVIEW_ITEMS: usize = 10;
@@ -54,20 +57,19 @@ impl TypingLog {
         self.capacity
     }
 
-    pub fn preview(&self, keyboard_type: KeyboardType) -> String {
+    pub fn preview_keycaps(&self, keyboard_type: KeyboardType) -> Vec<KeyPreviewSpec> {
         let preview_len = self.entries.len().saturating_sub(PREVIEW_ITEMS);
         self.entries
             .iter()
             .skip(preview_len)
-            .map(|entry| format_key_event(entry, keyboard_type))
-            .collect::<Vec<_>>()
-            .join(" | ")
+            .map(|entry| keycap_for_event(entry, keyboard_type))
+            .collect()
     }
 }
 
-fn format_key_event(entry: &LoggedKey, keyboard_type: KeyboardType) -> String {
-    if let Some(label) = keyboard::key_preview_label(keyboard_type, entry.key) {
-        return label;
+fn keycap_for_event(entry: &LoggedKey, keyboard_type: KeyboardType) -> KeyPreviewSpec {
+    if let Some(spec) = keyboard::key_preview_spec(keyboard_type, entry.key) {
+        return spec;
     }
 
     match entry
@@ -76,10 +78,23 @@ fn format_key_event(entry: &LoggedKey, keyboard_type: KeyboardType) -> String {
         .map(str::trim)
         .filter(|value| !value.is_empty())
     {
-        Some(" ") => "Space".to_string(),
-        Some("\n") => "Enter".to_string(),
-        Some("\t") => "Tab".to_string(),
-        Some(value) => value.to_string(),
-        None => format!("<{:?}>", entry.key),
+        Some(" ") => fallback_keycap("Space"),
+        Some("\n") => fallback_keycap("Enter"),
+        Some("\t") => fallback_keycap("Tab"),
+        Some(value) => fallback_keycap(value),
+        None => fallback_keycap(&format!("<{:?}>", entry.key)),
+    }
+}
+
+fn fallback_keycap(text: &str) -> KeyPreviewSpec {
+    let width_units = match text.len() {
+        0..=2 => 1.0,
+        3..=4 => 1.2,
+        5..=6 => 1.5,
+        _ => 1.8,
+    };
+    KeyPreviewSpec {
+        layout: KeyTextsLayout::Center1(text.to_string()),
+        width_units,
     }
 }

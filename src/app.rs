@@ -7,6 +7,7 @@ use std::{
 
 use crate::{
     color,
+    key_box::KeyTextsLayout,
     keyboard::{self, KeyboardType},
     listen,
     press_time_map::PressTimesMap,
@@ -14,7 +15,7 @@ use crate::{
 };
 use chrono::prelude::DateTime;
 use eframe::{App, CreationContext};
-use egui::{Color32, Event, Margin, Theme, UserData, ViewportCommand};
+use egui::{Align2, Color32, Event, FontId, Margin, Stroke, Theme, UserData, Vec2, ViewportCommand};
 use serde::{Deserialize, Serialize};
 
 const APP_ID: &str = "keyboard-heatmap";
@@ -77,9 +78,15 @@ impl eframe::App for KeyboardHeatmap {
                     typing_log.len(),
                     typing_log.capacity()
                 ));
-                let preview = typing_log.preview(state.keyboard_type);
-                if !preview.is_empty() {
-                    log_label.on_hover_text(preview);
+                let preview_keycaps = typing_log.preview_keycaps(state.keyboard_type);
+                if !preview_keycaps.is_empty() {
+                    log_label.on_hover_ui(|ui| {
+                        ui.horizontal_wrapped(|ui| {
+                            for keycap in &preview_keycaps {
+                                draw_preview_keycap(ui, &keycap.layout, keycap.width_units);
+                            }
+                        });
+                    });
                 }
 
                 if ui.button("Clear").clicked() {
@@ -256,6 +263,46 @@ fn app_data_dir() -> PathBuf {
             })
             .unwrap_or_else(|| PathBuf::from("."))
             .join(APP_ID)
+    }
+}
+
+fn draw_preview_keycap(ui: &mut egui::Ui, layout: &KeyTextsLayout, width_units: f32) {
+    let size = Vec2::new(34.0 * width_units, 34.0);
+    let (rect, _) = ui.allocate_exact_size(size, egui::Sense::hover());
+    let fill = Color32::from_rgb(247, 247, 247);
+    let stroke = Stroke::new(1.0, Color32::from_rgb(170, 170, 170));
+    let text_color = Color32::from_rgb(52, 52, 52);
+
+    ui.painter().rect_filled(rect, 5.0, fill);
+    ui.painter()
+        .rect_stroke(rect, 5.0, stroke, egui::StrokeKind::Inside);
+
+    match layout {
+        KeyTextsLayout::Center1(text) => {
+            ui.painter().text(
+                rect.center(),
+                Align2::CENTER_CENTER,
+                text,
+                FontId::monospace(12.0),
+                text_color,
+            );
+        }
+        KeyTextsLayout::TopBottom((top, bottom)) => {
+            ui.painter().text(
+                rect.center_top() + egui::vec2(0.0, 10.0),
+                Align2::CENTER_CENTER,
+                top,
+                FontId::monospace(11.0),
+                text_color,
+            );
+            ui.painter().text(
+                rect.center_bottom() - egui::vec2(0.0, 10.0),
+                Align2::CENTER_CENTER,
+                bottom,
+                FontId::monospace(11.0),
+                text_color,
+            );
+        }
     }
 }
 
