@@ -1,4 +1,5 @@
 use std::{
+    path::PathBuf,
     sync::{mpsc, Arc, Mutex},
     thread,
 };
@@ -10,12 +11,8 @@ use crate::{
     press_time_map::PressTimesMap,
 };
 use chrono::prelude::DateTime;
-use eframe::{
-    epaint::HsvaGamma,
-    glow::{self, HasContext},
-    App, CreationContext,
-};
-use egui::Color32;
+use eframe::{App, CreationContext};
+use egui::{Color32, Event, Margin, Theme, UserData, ViewportCommand};
 
 pub struct State {
     keyboard_type: KeyboardType,
@@ -26,7 +23,7 @@ pub struct State {
 struct KeyboardHeatmap {
     state: Arc<Mutex<State>>,
     press_map: Arc<Mutex<PressTimesMap>>,
-    take_screenshot: bool,
+    pending_screenshot_path: Option<PathBuf>,
 }
 
 impl eframe::App for KeyboardHeatmap {
@@ -34,17 +31,12 @@ impl eframe::App for KeyboardHeatmap {
         let Self {
             state,
             press_map: _,
-            take_screenshot: _,
+            pending_screenshot_path: _,
         } = self;
         let mut state = state.lock().unwrap();
 
-        let frame = egui::Frame::none()
-            .inner_margin(egui::style::Margin {
-                left: 30.,
-                right: 30.,
-                top: 30.,
-                bottom: 30.,
-            })
+        let frame = egui::Frame::new()
+            .inner_margin(Margin::same(30))
             .fill(Color32::WHITE);
 
         egui::CentralPanel::default().frame(frame).show(ctx, |ui| {
@@ -55,12 +47,12 @@ impl eframe::App for KeyboardHeatmap {
             ui.add_space(30.);
             ui.separator();
 
-            // toolbar
             ui.horizontal(|ui| {
                 ui.label(format!(
                     "Recording since {}",
                     state.start_time.format("%y-%m-%d %H:%M:%S")
                 ));
+
                 if ui.button("Clear").clicked() {
                     state.start_time = chrono::Local::now();
                     press_map.map.clear();
@@ -88,7 +80,7 @@ impl eframe::App for KeyboardHeatmap {
 
                 ui.label("Theme Palette: ");
                 color::color_slider_1d(ui, &mut state.hue, |h| {
-                    HsvaGamma {
+                    egui::ecolor::HsvaGamma {
                         h,
                         s: 1.0,
                         v: 1.0,
@@ -99,65 +91,37 @@ impl eframe::App for KeyboardHeatmap {
 
                 ui.separator();
                 if ui.button("Save as PNG").clicked() {
-                    self.take_screenshot = true;
+                    let path = native_dialog::DialogBuilder::file()
+                        .set_filename("keyboard-heatmap.png")
+                        .add_filter("PNG Image", ["png"])
+                        .save_single_file()
+                        .show()
+                        .unwrap();
+
+                    if let Some(path) = path {
+                        self.pending_screenshot_path = Some(path);
+                        ctx.send_viewport_cmd(ViewportCommand::Screenshot(UserData::default()));
+                    }
                 }
             });
         });
     }
 
-    /// export the screenshot into a png file.
-    fn post_rendering(&mut self, screen_size_px: [u32; 2], frame: &eframe::Frame) {
-        if !self.take_screenshot {
-            return;
-        }
-        self.take_screenshot = false;
-
-        // (0, 0) is at the left bottom
-        let toolbar_height = 120;
-        let state = self.state.lock().unwrap();
-        let Some(gl) = frame.gl() else { return };
-        let [w, h] = screen_size_px;
-        let w = match state.keyboard_type {
-            KeyboardType::QwertyMac => w - 20 - 420,
-            KeyboardType::Qwerty87 => w - 20,
-        };
-
-        let h = h - toolbar_height;
-        let mut buf = vec![0u8; w as usize * h as usize * 4];
-        let pixels = glow::PixelPackData::Slice(&mut buf[..]);
-        unsafe {
-            gl.read_pixels(
-                0,
-                toolbar_height as i32,
-                w as i32,
-                h as i32,
-                glow::RGBA,
-                glow::UNSIGNED_BYTE,
-                pixels,
-            );
-        }
-
-        // Flip vertically:
-        let mut rows: Vec<Vec<u8>> = buf
-            .chunks(w as usize * 4)
-            .into_iter()
-            .map(|chunk| chunk.to_vec())
-            .collect();
-        rows.reverse();
-        let buf: Vec<u8> = rows.into_iter().flatten().collect();
-
-        // save as image file
-        let path = native_dialog::FileDialog::new()
-            .set_location("~/Desktop")
-            .add_filter("PNG Image", &["png"])
-            .show_save_single_file()
-            .unwrap();
-        if let Some(path) = path {
-            if let Err(err) =
-                image::save_buffer(path, &buf[..], w as u32, h as u32, image::ColorType::Rgba8)
-            {
-                println!("err {:?}", err);
-            };
+    fn raw_input_hook(&mut self, _ctx: &egui::Context, raw_input: &mut egui::RawInput) {
+        for event in &raw_input.events {
+            if let Event::Screenshot { image, .. } = event {
+                if let Some(path) = self.pending_screenshot_path.take() {
+                    if let Err(err) = image::save_buffer(
+                        path,
+                        image.as_raw(),
+                        image.width() as u32,
+                        image.height() as u32,
+                        image::ColorType::Rgba8,
+                    ) {
+                        eprintln!("failed to save screenshot: {err:?}");
+                    }
+                }
+            }
         }
     }
 }
@@ -167,12 +131,16 @@ impl KeyboardHeatmap {
         Self {
             state,
             press_map,
-            take_screenshot: false,
+            pending_screenshot_path: None,
         }
     }
 }
 
-pub fn setup_ui(_cc: &CreationContext) -> Box<dyn App> {
+pub fn setup_ui(
+    cc: &CreationContext<'_>,
+) -> Result<Box<dyn App>, Box<dyn std::error::Error + Send + Sync>> {
+    cc.egui_ctx.set_theme(Theme::Light);
+
     let (sender, receiver) = mpsc::sync_channel(1);
 
     let state = Arc::new(Mutex::new(State {
@@ -182,24 +150,25 @@ pub fn setup_ui(_cc: &CreationContext) -> Box<dyn App> {
     }));
     let press_map = Arc::new(Mutex::new(PressTimesMap::new()));
 
-    // listen to keyboard press events
     {
         thread::spawn(move || {
             listen::listen_keyboard(sender.clone());
         });
     }
-    // handle keyboard press events
+
     {
         let press_map = press_map.clone();
+        let egui_ctx = cc.egui_ctx.clone();
         thread::spawn(move || loop {
-            if let Some(event_type) = receiver.recv().ok() {
+            if let Ok(event_type) = receiver.recv() {
                 let mut press_map = press_map.lock().unwrap();
                 if let rdev::EventType::KeyPress(key) = event_type {
                     press_map.key_press(key);
+                    egui_ctx.request_repaint();
                 }
             }
         });
     }
 
-    Box::new(KeyboardHeatmap::new(state, press_map))
+    Ok(Box::new(KeyboardHeatmap::new(state, press_map)))
 }

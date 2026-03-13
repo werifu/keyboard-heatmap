@@ -73,7 +73,8 @@ pub fn color_slider_1d(
             ui.painter().add(Shape::mesh(mesh));
         }
 
-        ui.painter().rect_stroke(rect, 0.0, visuals.bg_stroke); // outline
+        ui.painter()
+            .rect_stroke(rect, 0.0, visuals.bg_stroke, egui::StrokeKind::Inside); // outline
 
         {
             // Show where the slider is at:

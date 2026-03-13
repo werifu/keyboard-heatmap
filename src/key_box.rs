@@ -79,6 +79,7 @@ impl KeyBox {
                 width: self.stroke_width,
                 color: get_strike_color(filled_color),
             },
+            egui::StrokeKind::Inside,
         );
 
         let hover_ui = |ui: &mut Ui| {
