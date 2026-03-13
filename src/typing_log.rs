@@ -1,10 +1,17 @@
 use std::collections::VecDeque;
 
+use crate::keyboard::{self, KeyboardType};
+
 const DEFAULT_LOG_CAPACITY: usize = 1024;
-const PREVIEW_ITEMS: usize = 24;
+const PREVIEW_ITEMS: usize = 10;
+
+struct LoggedKey {
+    key: rdev::Key,
+    fallback_name: Option<String>,
+}
 
 pub struct TypingLog {
-    entries: VecDeque<String>,
+    entries: VecDeque<LoggedKey>,
     capacity: usize,
 }
 
@@ -29,8 +36,10 @@ impl TypingLog {
             self.entries.pop_front();
         }
 
-        self.entries
-            .push_back(format_key_event(key, event.name.as_deref()));
+        self.entries.push_back(LoggedKey {
+            key,
+            fallback_name: event.name.clone(),
+        });
     }
 
     pub fn clear(&mut self) {
@@ -45,23 +54,32 @@ impl TypingLog {
         self.capacity
     }
 
-    pub fn preview(&self) -> String {
+    pub fn preview(&self, keyboard_type: KeyboardType) -> String {
         let preview_len = self.entries.len().saturating_sub(PREVIEW_ITEMS);
         self.entries
             .iter()
             .skip(preview_len)
-            .cloned()
+            .map(|entry| format_key_event(entry, keyboard_type))
             .collect::<Vec<_>>()
-            .join(" ")
+            .join(" | ")
     }
 }
 
-fn format_key_event(key: rdev::Key, name: Option<&str>) -> String {
-    match name.map(str::trim).filter(|value| !value.is_empty()) {
+fn format_key_event(entry: &LoggedKey, keyboard_type: KeyboardType) -> String {
+    if let Some(label) = keyboard::key_preview_label(keyboard_type, entry.key) {
+        return label;
+    }
+
+    match entry
+        .fallback_name
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
         Some(" ") => "Space".to_string(),
         Some("\n") => "Enter".to_string(),
         Some("\t") => "Tab".to_string(),
         Some(value) => value.to_string(),
-        None => format!("<{key:?}>"),
+        None => format!("<{:?}>", entry.key),
     }
 }

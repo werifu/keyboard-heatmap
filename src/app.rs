@@ -77,7 +77,7 @@ impl eframe::App for KeyboardHeatmap {
                     typing_log.len(),
                     typing_log.capacity()
                 ));
-                let preview = typing_log.preview();
+                let preview = typing_log.preview(state.keyboard_type);
                 if !preview.is_empty() {
                     log_label.on_hover_text(preview);
                 }

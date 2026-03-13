@@ -24,6 +24,96 @@ impl KeyboardType {
     }
 }
 
+pub fn key_preview_label(keyboard_type: KeyboardType, key: rdev::Key) -> Option<String> {
+    if let Some(label) = FN_KEYS_PAIRS
+        .iter()
+        .find_map(|(label, candidate)| (*candidate == key).then(|| (*label).to_string()))
+    {
+        return Some(label);
+    }
+
+    if let Some(label) = NUM_KEY_LINE_PAIRS.iter().find_map(|(top, bottom, candidate)| {
+        (*candidate == key).then(|| format!("{top} {bottom}"))
+    }) {
+        return Some(label);
+    }
+
+    if let Some(label) = FIRST_ALPHA_LINE_PAIRS
+        .iter()
+        .chain(SECOND_ALPHA_LINE_PAIRS.iter())
+        .chain(THIRD_ALPHA_LINE_PAIRS.iter())
+        .find_map(|(label, candidate)| (*candidate == key).then(|| (*label).to_string()))
+    {
+        return Some(label);
+    }
+
+    Some(match keyboard_type {
+        KeyboardType::QwertyMac => match key {
+            rdev::Key::Escape => "Esc".to_string(),
+            rdev::Key::Unknown(0) => "Power".to_string(),
+            rdev::Key::Backspace => "Back".to_string(),
+            rdev::Key::Tab => "Tab".to_string(),
+            rdev::Key::LeftBracket => "[ {".to_string(),
+            rdev::Key::RightBracket => "] }".to_string(),
+            rdev::Key::BackSlash => "\\ |".to_string(),
+            rdev::Key::CapsLock => "Caps Lock".to_string(),
+            rdev::Key::SemiColon => ": ;".to_string(),
+            rdev::Key::Quote => "\" '".to_string(),
+            rdev::Key::Return => "Enter".to_string(),
+            rdev::Key::ShiftLeft | rdev::Key::ShiftRight => "Shift".to_string(),
+            rdev::Key::Comma => "< ,".to_string(),
+            rdev::Key::Dot => "> .".to_string(),
+            rdev::Key::Slash => "? /".to_string(),
+            rdev::Key::Function => "Fn".to_string(),
+            rdev::Key::ControlLeft => "Ctrl".to_string(),
+            rdev::Key::Alt | rdev::Key::AltGr => "Opt".to_string(),
+            rdev::Key::MetaLeft | rdev::Key::MetaRight => "Cmd".to_string(),
+            rdev::Key::Space => "Space".to_string(),
+            rdev::Key::LeftArrow => "←".to_string(),
+            rdev::Key::UpArrow => "↑".to_string(),
+            rdev::Key::DownArrow => "↓".to_string(),
+            rdev::Key::RightArrow => "→".to_string(),
+            _ => return None,
+        },
+        KeyboardType::Qwerty87 => match key {
+            rdev::Key::Escape => "Esc".to_string(),
+            rdev::Key::PrintScreen => "PrtSc".to_string(),
+            rdev::Key::ScrollLock => "ScrLk".to_string(),
+            rdev::Key::Pause => "Pause".to_string(),
+            rdev::Key::Backspace => "Back".to_string(),
+            rdev::Key::Insert => "Ins".to_string(),
+            rdev::Key::Home => "Home".to_string(),
+            rdev::Key::PageUp => "PgUp".to_string(),
+            rdev::Key::Tab => "Tab".to_string(),
+            rdev::Key::LeftBracket => "[ {".to_string(),
+            rdev::Key::RightBracket => "] }".to_string(),
+            rdev::Key::BackSlash => "\\ |".to_string(),
+            rdev::Key::Delete => "Del".to_string(),
+            rdev::Key::End => "End".to_string(),
+            rdev::Key::PageDown => "PgDn".to_string(),
+            rdev::Key::CapsLock => "Caps Lock".to_string(),
+            rdev::Key::SemiColon => ": ;".to_string(),
+            rdev::Key::Quote => "\" '".to_string(),
+            rdev::Key::Return => "Enter".to_string(),
+            rdev::Key::ShiftLeft | rdev::Key::ShiftRight => "Shift".to_string(),
+            rdev::Key::Comma => "< ,".to_string(),
+            rdev::Key::Dot => "> .".to_string(),
+            rdev::Key::Slash => "? /".to_string(),
+            rdev::Key::ControlLeft | rdev::Key::ControlRight => "Ctrl".to_string(),
+            rdev::Key::MetaLeft => "Win".to_string(),
+            rdev::Key::Alt | rdev::Key::AltGr => "Alt".to_string(),
+            rdev::Key::Space => "Space".to_string(),
+            rdev::Key::Function => "Fn".to_string(),
+            rdev::Key::Unknown(110) => "Menu".to_string(),
+            rdev::Key::LeftArrow => "←".to_string(),
+            rdev::Key::UpArrow => "↑".to_string(),
+            rdev::Key::RightArrow => "→".to_string(),
+            rdev::Key::DownArrow => "↓".to_string(),
+            _ => return None,
+        },
+    })
+}
+
 const FN_KEYS_PAIRS: [(&str, rdev::Key); 12] = [
     ("F1", rdev::Key::F1),
     ("F2", rdev::Key::F2),
