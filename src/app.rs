@@ -268,7 +268,7 @@ fn app_data_dir() -> PathBuf {
 const PREVIEW_KEYCAP_HEIGHT: f32 = 34.0;
 const PREVIEW_KEYCAP_BASE_WIDTH: f32 = 34.0;
 const PREVIEW_KEYCAP_GAP: f32 = 6.0;
-const PREVIEW_VIEWPORT_WIDTH: f32 = 420.0;
+const PREVIEW_VIEWPORT_WIDTH: f32 = 260.0;
 const PREVIEW_SCROLL_SPEED: f32 = 80.0;
 
 fn draw_preview_keycaps_marquee(ui: &mut egui::Ui, preview_keycaps: &[keyboard::KeyPreviewSpec]) {
@@ -277,39 +277,29 @@ fn draw_preview_keycaps_marquee(ui: &mut egui::Ui, preview_keycaps: &[keyboard::
         .map(|keycap| preview_keycap_size(keycap.width_units).x)
         .sum::<f32>()
         + PREVIEW_KEYCAP_GAP * preview_keycaps.len().saturating_sub(1) as f32;
-    let viewport_width = PREVIEW_VIEWPORT_WIDTH.min(total_width.max(140.0));
+    let viewport_width = PREVIEW_VIEWPORT_WIDTH;
     let (rect, _) = ui.allocate_exact_size(
         Vec2::new(viewport_width, PREVIEW_KEYCAP_HEIGHT),
         egui::Sense::hover(),
     );
     let painter = ui.painter().with_clip_rect(rect);
 
-    if total_width <= rect.width() {
-        let mut x = rect.left() + (rect.width() - total_width) * 0.5;
+    ui.ctx()
+        .request_repaint_after(std::time::Duration::from_millis(16));
+    let loop_width = (total_width + PREVIEW_KEYCAP_GAP).max(rect.width());
+    let progress = (ui.input(|input| input.time) as f32 * PREVIEW_SCROLL_SPEED) % loop_width;
+    let start_x = rect.left() - progress;
+
+    for copy in 0..=1 {
+        let mut x = start_x + copy as f32 * loop_width;
         for keycap in preview_keycaps {
             let size = preview_keycap_size(keycap.width_units);
-            paint_preview_keycap(
-                &painter,
-                Rect::from_min_size(pos2(x, rect.top()), size),
-                &keycap.layout,
-            );
+            let key_rect = Rect::from_min_size(pos2(x, rect.top()), size);
+            if key_rect.intersects(rect) {
+                paint_preview_keycap(&painter, key_rect, &keycap.layout);
+            }
             x += size.x + PREVIEW_KEYCAP_GAP;
         }
-        return;
-    }
-
-    ui.ctx().request_repaint();
-    let cycle = total_width + rect.width() + 24.0;
-    let progress = (ui.input(|input| input.time) as f32 * PREVIEW_SCROLL_SPEED) % cycle;
-    let mut x = rect.right() - progress;
-
-    for keycap in preview_keycaps {
-        let size = preview_keycap_size(keycap.width_units);
-        let key_rect = Rect::from_min_size(pos2(x, rect.top()), size);
-        if key_rect.intersects(rect) {
-            paint_preview_keycap(&painter, key_rect, &keycap.layout);
-        }
-        x += size.x + PREVIEW_KEYCAP_GAP;
     }
 }
 
