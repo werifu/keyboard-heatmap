@@ -43,15 +43,6 @@ struct KeyboardHeatmap {
     press_map: Arc<Mutex<PressTimesMap>>,
     typing_log: Arc<Mutex<TypingLog>>,
     pending_screenshot_path: Option<PathBuf>,
-    preview_scroll: PreviewScrollState,
-}
-
-#[derive(Default)]
-struct PreviewScrollState {
-    current: f32,
-    target: f32,
-    last_len: usize,
-    initialized: bool,
 }
 
 impl eframe::App for KeyboardHeatmap {
@@ -61,7 +52,6 @@ impl eframe::App for KeyboardHeatmap {
             press_map: _,
             typing_log: _,
             pending_screenshot_path: _,
-            preview_scroll: _,
         } = self;
         let mut state = state.lock().unwrap();
 
@@ -94,7 +84,7 @@ impl eframe::App for KeyboardHeatmap {
                 let preview_keycaps = typing_log.preview_keycaps(state.keyboard_type);
                 if !preview_keycaps.is_empty() {
                     log_label.on_hover_ui(|ui| {
-                        draw_preview_keycaps_marquee(ui, &preview_keycaps, &mut self.preview_scroll);
+                        draw_preview_keycaps_grid(ui, &preview_keycaps);
                     });
                 }
 
@@ -102,7 +92,6 @@ impl eframe::App for KeyboardHeatmap {
                     state.start_time = chrono::Local::now();
                     press_map.map.clear();
                     typing_log.clear();
-                    self.preview_scroll = PreviewScrollState::default();
                 }
 
                 ui.separator();
@@ -190,7 +179,6 @@ impl KeyboardHeatmap {
             press_map,
             typing_log,
             pending_screenshot_path: None,
-            preview_scroll: PreviewScrollState::default(),
         }
     }
 
@@ -281,65 +269,74 @@ const PREVIEW_KEYCAP_HEIGHT: f32 = 34.0;
 const PREVIEW_KEYCAP_BASE_WIDTH: f32 = 34.0;
 const PREVIEW_KEYCAP_GAP: f32 = 6.0;
 const PREVIEW_VIEWPORT_WIDTH: f32 = 260.0;
-const PREVIEW_SCROLL_SPEED: f32 = 320.0;
 
-fn draw_preview_keycaps_marquee(
-    ui: &mut egui::Ui,
-    preview_keycaps: &[keyboard::KeyPreviewSpec],
-    scroll_state: &mut PreviewScrollState,
-) {
-    let total_width = preview_keycaps
-        .iter()
-        .map(|keycap| preview_keycap_size(keycap.width_units).x)
-        .sum::<f32>()
-        + PREVIEW_KEYCAP_GAP * preview_keycaps.len().saturating_sub(1) as f32;
-    let viewport_width = PREVIEW_VIEWPORT_WIDTH;
+fn draw_preview_keycaps_grid(ui: &mut egui::Ui, preview_keycaps: &[keyboard::KeyPreviewSpec]) {
+    let rows = preview_keycap_rows(preview_keycaps, PREVIEW_VIEWPORT_WIDTH);
+    let row_count = rows.len().max(1) as f32;
+    let height = row_count * PREVIEW_KEYCAP_HEIGHT + (row_count - 1.0) * PREVIEW_KEYCAP_GAP;
     let (rect, _) = ui.allocate_exact_size(
-        Vec2::new(viewport_width, PREVIEW_KEYCAP_HEIGHT),
+        Vec2::new(PREVIEW_VIEWPORT_WIDTH, height),
         egui::Sense::hover(),
     );
     let painter = ui.painter().with_clip_rect(rect);
-    let max_scroll = (total_width - rect.width()).max(0.0);
-    let current_len = preview_keycaps.len();
 
-    if !scroll_state.initialized {
-        scroll_state.current = max_scroll;
-        scroll_state.target = max_scroll;
-        scroll_state.last_len = current_len;
-        scroll_state.initialized = true;
-    } else if max_scroll <= 0.0 {
-        scroll_state.current = 0.0;
-        scroll_state.target = 0.0;
-        scroll_state.last_len = current_len;
-    } else if current_len > scroll_state.last_len {
-        scroll_state.target = max_scroll;
-        scroll_state.last_len = current_len;
-    } else if current_len < scroll_state.last_len || scroll_state.target > max_scroll {
-        scroll_state.current = max_scroll;
-        scroll_state.target = max_scroll;
-        scroll_state.last_len = current_len;
-    }
+    let mut y = rect.top();
+    for row in rows {
+        let row_width = row
+            .iter()
+            .map(|keycap| preview_keycap_size(keycap.width_units).x)
+            .sum::<f32>()
+            + PREVIEW_KEYCAP_GAP * row.len().saturating_sub(1) as f32;
+        let mut x = rect.left() + (rect.width() - row_width).max(0.0);
 
-    if (scroll_state.current - scroll_state.target).abs() > 0.5 {
-        let dt = ui.input(|input| input.stable_dt).max(1.0 / 60.0);
-        let step = PREVIEW_SCROLL_SPEED * dt;
-        scroll_state.current =
-            (scroll_state.current + step).min(scroll_state.target);
-        ui.ctx()
-            .request_repaint_after(std::time::Duration::from_millis(16));
-    } else {
-        scroll_state.current = scroll_state.target;
-    }
-
-    let mut x = rect.left() - scroll_state.current;
-    for keycap in preview_keycaps {
-        let size = preview_keycap_size(keycap.width_units);
-        let key_rect = Rect::from_min_size(pos2(x, rect.top()), size);
-        if key_rect.intersects(rect) {
+        for keycap in row {
+            let size = preview_keycap_size(keycap.width_units);
+            let key_rect = Rect::from_min_size(pos2(x, y), size);
             paint_preview_keycap(&painter, key_rect, &keycap.layout);
+            x += size.x + PREVIEW_KEYCAP_GAP;
         }
-        x += size.x + PREVIEW_KEYCAP_GAP;
+
+        y += PREVIEW_KEYCAP_HEIGHT + PREVIEW_KEYCAP_GAP;
     }
+}
+
+fn preview_keycap_rows(
+    preview_keycaps: &[keyboard::KeyPreviewSpec],
+    viewport_width: f32,
+) -> Vec<Vec<keyboard::KeyPreviewSpec>> {
+    let mut rows_reversed: Vec<Vec<keyboard::KeyPreviewSpec>> = Vec::new();
+    let mut current_row: Vec<keyboard::KeyPreviewSpec> = Vec::new();
+    let mut current_width = 0.0;
+
+    for keycap in preview_keycaps.iter().rev() {
+        let key_width = preview_keycap_size(keycap.width_units).x;
+        let next_width = if current_row.is_empty() {
+            key_width
+        } else {
+            current_width + PREVIEW_KEYCAP_GAP + key_width
+        };
+
+        if !current_row.is_empty() && next_width > viewport_width {
+            current_row.reverse();
+            rows_reversed.push(std::mem::take(&mut current_row));
+            if rows_reversed.len() == 2 {
+                break;
+            }
+            current_row = vec![keycap.clone()];
+            current_width = key_width;
+        } else {
+            current_row.push(keycap.clone());
+            current_width = next_width;
+        }
+    }
+
+    if rows_reversed.len() < 2 && !current_row.is_empty() {
+        current_row.reverse();
+        rows_reversed.push(current_row);
+    }
+
+    rows_reversed.reverse();
+    rows_reversed
 }
 
 fn preview_keycap_size(width_units: f32) -> Vec2 {
