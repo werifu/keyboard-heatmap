@@ -15,7 +15,10 @@ use crate::{
 };
 use chrono::prelude::DateTime;
 use eframe::{App, CreationContext};
-use egui::{Align2, Color32, Event, FontId, Margin, Stroke, Theme, UserData, Vec2, ViewportCommand};
+use egui::{
+    pos2, vec2, Align2, Color32, Event, FontId, Margin, Rect, Stroke, Theme, UserData, Vec2,
+    ViewportCommand,
+};
 use serde::{Deserialize, Serialize};
 
 const APP_ID: &str = "keyboard-heatmap";
@@ -81,11 +84,7 @@ impl eframe::App for KeyboardHeatmap {
                 let preview_keycaps = typing_log.preview_keycaps(state.keyboard_type);
                 if !preview_keycaps.is_empty() {
                     log_label.on_hover_ui(|ui| {
-                        ui.horizontal_wrapped(|ui| {
-                            for keycap in &preview_keycaps {
-                                draw_preview_keycap(ui, &keycap.layout, keycap.width_units);
-                            }
-                        });
+                        draw_preview_keycaps_marquee(ui, &preview_keycaps);
                     });
                 }
 
@@ -266,20 +265,69 @@ fn app_data_dir() -> PathBuf {
     }
 }
 
-fn draw_preview_keycap(ui: &mut egui::Ui, layout: &KeyTextsLayout, width_units: f32) {
-    let size = Vec2::new(34.0 * width_units, 34.0);
-    let (rect, _) = ui.allocate_exact_size(size, egui::Sense::hover());
+const PREVIEW_KEYCAP_HEIGHT: f32 = 34.0;
+const PREVIEW_KEYCAP_BASE_WIDTH: f32 = 34.0;
+const PREVIEW_KEYCAP_GAP: f32 = 6.0;
+const PREVIEW_VIEWPORT_WIDTH: f32 = 420.0;
+const PREVIEW_SCROLL_SPEED: f32 = 80.0;
+
+fn draw_preview_keycaps_marquee(ui: &mut egui::Ui, preview_keycaps: &[keyboard::KeyPreviewSpec]) {
+    let total_width = preview_keycaps
+        .iter()
+        .map(|keycap| preview_keycap_size(keycap.width_units).x)
+        .sum::<f32>()
+        + PREVIEW_KEYCAP_GAP * preview_keycaps.len().saturating_sub(1) as f32;
+    let viewport_width = PREVIEW_VIEWPORT_WIDTH.min(total_width.max(140.0));
+    let (rect, _) = ui.allocate_exact_size(
+        Vec2::new(viewport_width, PREVIEW_KEYCAP_HEIGHT),
+        egui::Sense::hover(),
+    );
+    let painter = ui.painter().with_clip_rect(rect);
+
+    if total_width <= rect.width() {
+        let mut x = rect.left() + (rect.width() - total_width) * 0.5;
+        for keycap in preview_keycaps {
+            let size = preview_keycap_size(keycap.width_units);
+            paint_preview_keycap(
+                &painter,
+                Rect::from_min_size(pos2(x, rect.top()), size),
+                &keycap.layout,
+            );
+            x += size.x + PREVIEW_KEYCAP_GAP;
+        }
+        return;
+    }
+
+    ui.ctx().request_repaint();
+    let cycle = total_width + rect.width() + 24.0;
+    let progress = (ui.input(|input| input.time) as f32 * PREVIEW_SCROLL_SPEED) % cycle;
+    let mut x = rect.right() - progress;
+
+    for keycap in preview_keycaps {
+        let size = preview_keycap_size(keycap.width_units);
+        let key_rect = Rect::from_min_size(pos2(x, rect.top()), size);
+        if key_rect.intersects(rect) {
+            paint_preview_keycap(&painter, key_rect, &keycap.layout);
+        }
+        x += size.x + PREVIEW_KEYCAP_GAP;
+    }
+}
+
+fn preview_keycap_size(width_units: f32) -> Vec2 {
+    Vec2::new(PREVIEW_KEYCAP_BASE_WIDTH * width_units, PREVIEW_KEYCAP_HEIGHT)
+}
+
+fn paint_preview_keycap(painter: &egui::Painter, rect: Rect, layout: &KeyTextsLayout) {
     let fill = Color32::from_rgb(247, 247, 247);
     let stroke = Stroke::new(1.0, Color32::from_rgb(170, 170, 170));
     let text_color = Color32::from_rgb(52, 52, 52);
 
-    ui.painter().rect_filled(rect, 5.0, fill);
-    ui.painter()
-        .rect_stroke(rect, 5.0, stroke, egui::StrokeKind::Inside);
+    painter.rect_filled(rect, 5.0, fill);
+    painter.rect_stroke(rect, 5.0, stroke, egui::StrokeKind::Inside);
 
     match layout {
         KeyTextsLayout::Center1(text) => {
-            ui.painter().text(
+            painter.text(
                 rect.center(),
                 Align2::CENTER_CENTER,
                 text,
@@ -288,15 +336,15 @@ fn draw_preview_keycap(ui: &mut egui::Ui, layout: &KeyTextsLayout, width_units: 
             );
         }
         KeyTextsLayout::TopBottom((top, bottom)) => {
-            ui.painter().text(
-                rect.center_top() + egui::vec2(0.0, 10.0),
+            painter.text(
+                rect.center_top() + vec2(0.0, 10.0),
                 Align2::CENTER_CENTER,
                 top,
                 FontId::monospace(11.0),
                 text_color,
             );
-            ui.painter().text(
-                rect.center_bottom() - egui::vec2(0.0, 10.0),
+            painter.text(
+                rect.center_bottom() - vec2(0.0, 10.0),
                 Align2::CENTER_CENTER,
                 bottom,
                 FontId::monospace(11.0),
