@@ -2,7 +2,7 @@ use std::sync::mpsc::SyncSender;
 
 use rdev::listen as listen_event;
 
-pub fn listen_keyboard(sender: SyncSender<rdev::EventType>) {
+pub fn listen_keyboard(sender: SyncSender<rdev::Event>) {
     if let Err(error) = listen_event(move |event: rdev::Event| {
         callback(event, sender.clone());
     }) {
@@ -10,12 +10,8 @@ pub fn listen_keyboard(sender: SyncSender<rdev::EventType>) {
     }
 }
 
-fn callback(event: rdev::Event, sender: SyncSender<rdev::EventType>) {
-    let event_type = event.event_type;
-    match event_type {
-        rdev::EventType::KeyPress(_) => {
-            sender.send(event_type).unwrap();
-        }
-        _ => {}
+fn callback(event: rdev::Event, sender: SyncSender<rdev::Event>) {
+    if let rdev::EventType::KeyPress(_) = event.event_type {
+        sender.send(event).unwrap();
     }
 }

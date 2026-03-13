@@ -10,6 +10,7 @@ use crate::{
     keyboard::{self, KeyboardType},
     listen,
     press_time_map::PressTimesMap,
+    typing_log::TypingLog,
 };
 use chrono::prelude::DateTime;
 use eframe::{App, CreationContext};
@@ -36,6 +37,7 @@ struct PersistedState {
 struct KeyboardHeatmap {
     state: Arc<Mutex<State>>,
     press_map: Arc<Mutex<PressTimesMap>>,
+    typing_log: Arc<Mutex<TypingLog>>,
     pending_screenshot_path: Option<PathBuf>,
 }
 
@@ -44,6 +46,7 @@ impl eframe::App for KeyboardHeatmap {
         let Self {
             state,
             press_map: _,
+            typing_log: _,
             pending_screenshot_path: _,
         } = self;
         let mut state = state.lock().unwrap();
@@ -54,6 +57,7 @@ impl eframe::App for KeyboardHeatmap {
 
         egui::CentralPanel::default().frame(frame).show(ctx, |ui| {
             let press_map = &mut self.press_map.lock().unwrap();
+            let mut typing_log = self.typing_log.lock().unwrap();
             let mut keyboard = keyboard::Keyboard::new(state.keyboard_type, state.hue);
             keyboard.draw(press_map, ui);
 
@@ -68,10 +72,20 @@ impl eframe::App for KeyboardHeatmap {
 
                 ui.separator();
                 ui.label(format!("Total presses: {}", press_map.total_presses()));
+                let log_label = ui.label(format!(
+                    "Log buffer: {}/{}",
+                    typing_log.len(),
+                    typing_log.capacity()
+                ));
+                let preview = typing_log.preview();
+                if !preview.is_empty() {
+                    log_label.on_hover_text(preview);
+                }
 
                 if ui.button("Clear").clicked() {
                     state.start_time = chrono::Local::now();
                     press_map.map.clear();
+                    typing_log.clear();
                 }
 
                 ui.separator();
@@ -149,10 +163,15 @@ impl eframe::App for KeyboardHeatmap {
 }
 
 impl KeyboardHeatmap {
-    fn new(state: Arc<Mutex<State>>, press_map: Arc<Mutex<PressTimesMap>>) -> Self {
+    fn new(
+        state: Arc<Mutex<State>>,
+        press_map: Arc<Mutex<PressTimesMap>>,
+        typing_log: Arc<Mutex<TypingLog>>,
+    ) -> Self {
         Self {
             state,
             press_map,
+            typing_log,
             pending_screenshot_path: None,
         }
     }
@@ -250,6 +269,7 @@ pub fn setup_ui(
 
     let state = Arc::new(Mutex::new(saved_state));
     let press_map = Arc::new(Mutex::new(saved_press_map));
+    let typing_log = Arc::new(Mutex::new(TypingLog::new()));
 
     {
         thread::spawn(move || {
@@ -259,17 +279,20 @@ pub fn setup_ui(
 
     {
         let press_map = press_map.clone();
+        let typing_log = typing_log.clone();
         let egui_ctx = cc.egui_ctx.clone();
         thread::spawn(move || loop {
-            if let Ok(event_type) = receiver.recv() {
+            if let Ok(event) = receiver.recv() {
                 let mut press_map = press_map.lock().unwrap();
-                if let rdev::EventType::KeyPress(key) = event_type {
+                let mut typing_log = typing_log.lock().unwrap();
+                if let rdev::EventType::KeyPress(key) = event.event_type {
                     press_map.key_press(key);
+                    typing_log.push_event(&event);
                     egui_ctx.request_repaint();
                 }
             }
         });
     }
 
-    Ok(Box::new(KeyboardHeatmap::new(state, press_map)))
+    Ok(Box::new(KeyboardHeatmap::new(state, press_map, typing_log)))
 }
