@@ -1,4 +1,5 @@
 use std::{
+    fs,
     path::PathBuf,
     sync::{mpsc, Arc, Mutex},
     thread,
@@ -13,11 +14,23 @@ use crate::{
 use chrono::prelude::DateTime;
 use eframe::{App, CreationContext};
 use egui::{Color32, Event, Margin, Theme, UserData, ViewportCommand};
+use serde::{Deserialize, Serialize};
+
+const APP_ID: &str = "keyboard-heatmap";
+const STATE_FILE: &str = "heatmap-state.json";
 
 pub struct State {
     keyboard_type: KeyboardType,
     hue: f32,
     start_time: DateTime<chrono::Local>,
+}
+
+#[derive(Serialize, Deserialize)]
+struct PersistedState {
+    keyboard_type: KeyboardType,
+    hue: f32,
+    start_time: DateTime<chrono::Local>,
+    press_entries: Vec<(String, u32)>,
 }
 
 struct KeyboardHeatmap {
@@ -52,6 +65,9 @@ impl eframe::App for KeyboardHeatmap {
                     "Recording since {}",
                     state.start_time.format("%y-%m-%d %H:%M:%S")
                 ));
+
+                ui.separator();
+                ui.label(format!("Total presses: {}", press_map.total_presses()));
 
                 if ui.button("Clear").clicked() {
                     state.start_time = chrono::Local::now();
@@ -124,6 +140,12 @@ impl eframe::App for KeyboardHeatmap {
             }
         }
     }
+
+    fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
+        if let Err(err) = self.save_to_disk() {
+            eprintln!("failed to save state: {err}");
+        }
+    }
 }
 
 impl KeyboardHeatmap {
@@ -134,6 +156,88 @@ impl KeyboardHeatmap {
             pending_screenshot_path: None,
         }
     }
+
+    fn save_to_disk(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        let state = self.state.lock().unwrap();
+        let press_map = self.press_map.lock().unwrap();
+        let persisted = PersistedState {
+            keyboard_type: state.keyboard_type,
+            hue: state.hue,
+            start_time: state.start_time,
+            press_entries: press_map.persisted_entries(),
+        };
+
+        let path = state_file_path();
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        fs::write(path, serde_json::to_vec_pretty(&persisted)?)?;
+        Ok(())
+    }
+}
+
+fn default_state() -> State {
+    State {
+        keyboard_type: KeyboardType::Qwerty87,
+        hue: 220. / 360.,
+        start_time: chrono::Local::now(),
+    }
+}
+
+fn load_state() -> (State, PressTimesMap) {
+    let path = state_file_path();
+    let Ok(bytes) = fs::read(path) else {
+        return (default_state(), PressTimesMap::new());
+    };
+    let Ok(saved) = serde_json::from_slice::<PersistedState>(&bytes) else {
+        return (default_state(), PressTimesMap::new());
+    };
+
+    (
+        State {
+            keyboard_type: saved.keyboard_type,
+            hue: saved.hue,
+            start_time: saved.start_time,
+        },
+        PressTimesMap::from_persisted_entries(saved.press_entries),
+    )
+}
+
+fn state_file_path() -> PathBuf {
+    app_data_dir().join(STATE_FILE)
+}
+
+fn app_data_dir() -> PathBuf {
+    #[cfg(target_os = "windows")]
+    {
+        std::env::var_os("APPDATA")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| PathBuf::from("."))
+            .join(APP_ID)
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        std::env::var_os("HOME")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| PathBuf::from("."))
+            .join("Library")
+            .join("Application Support")
+            .join(APP_ID)
+    }
+
+    #[cfg(all(not(target_os = "windows"), not(target_os = "macos")))]
+    {
+        std::env::var_os("XDG_DATA_HOME")
+            .map(PathBuf::from)
+            .or_else(|| {
+                std::env::var_os("HOME")
+                    .map(PathBuf::from)
+                    .map(|path| path.join(".local").join("share"))
+            })
+            .unwrap_or_else(|| PathBuf::from("."))
+            .join(APP_ID)
+    }
 }
 
 pub fn setup_ui(
@@ -142,13 +246,10 @@ pub fn setup_ui(
     cc.egui_ctx.set_theme(Theme::Light);
 
     let (sender, receiver) = mpsc::sync_channel(1);
+    let (saved_state, saved_press_map) = load_state();
 
-    let state = Arc::new(Mutex::new(State {
-        keyboard_type: KeyboardType::Qwerty87,
-        hue: 220. / 360.,
-        start_time: chrono::Local::now(),
-    }));
-    let press_map = Arc::new(Mutex::new(PressTimesMap::new()));
+    let state = Arc::new(Mutex::new(saved_state));
+    let press_map = Arc::new(Mutex::new(saved_press_map));
 
     {
         thread::spawn(move || {
