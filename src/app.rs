@@ -43,6 +43,15 @@ struct KeyboardHeatmap {
     press_map: Arc<Mutex<PressTimesMap>>,
     typing_log: Arc<Mutex<TypingLog>>,
     pending_screenshot_path: Option<PathBuf>,
+    preview_scroll: PreviewScrollState,
+}
+
+#[derive(Default)]
+struct PreviewScrollState {
+    current: f32,
+    target: f32,
+    last_len: usize,
+    initialized: bool,
 }
 
 impl eframe::App for KeyboardHeatmap {
@@ -52,6 +61,7 @@ impl eframe::App for KeyboardHeatmap {
             press_map: _,
             typing_log: _,
             pending_screenshot_path: _,
+            preview_scroll: _,
         } = self;
         let mut state = state.lock().unwrap();
 
@@ -84,7 +94,7 @@ impl eframe::App for KeyboardHeatmap {
                 let preview_keycaps = typing_log.preview_keycaps(state.keyboard_type);
                 if !preview_keycaps.is_empty() {
                     log_label.on_hover_ui(|ui| {
-                        draw_preview_keycaps_marquee(ui, &preview_keycaps);
+                        draw_preview_keycaps_marquee(ui, &preview_keycaps, &mut self.preview_scroll);
                     });
                 }
 
@@ -92,6 +102,7 @@ impl eframe::App for KeyboardHeatmap {
                     state.start_time = chrono::Local::now();
                     press_map.map.clear();
                     typing_log.clear();
+                    self.preview_scroll = PreviewScrollState::default();
                 }
 
                 ui.separator();
@@ -179,6 +190,7 @@ impl KeyboardHeatmap {
             press_map,
             typing_log,
             pending_screenshot_path: None,
+            preview_scroll: PreviewScrollState::default(),
         }
     }
 
@@ -269,9 +281,13 @@ const PREVIEW_KEYCAP_HEIGHT: f32 = 34.0;
 const PREVIEW_KEYCAP_BASE_WIDTH: f32 = 34.0;
 const PREVIEW_KEYCAP_GAP: f32 = 6.0;
 const PREVIEW_VIEWPORT_WIDTH: f32 = 260.0;
-const PREVIEW_SCROLL_SPEED: f32 = 80.0;
+const PREVIEW_SCROLL_SPEED: f32 = 320.0;
 
-fn draw_preview_keycaps_marquee(ui: &mut egui::Ui, preview_keycaps: &[keyboard::KeyPreviewSpec]) {
+fn draw_preview_keycaps_marquee(
+    ui: &mut egui::Ui,
+    preview_keycaps: &[keyboard::KeyPreviewSpec],
+    scroll_state: &mut PreviewScrollState,
+) {
     let total_width = preview_keycaps
         .iter()
         .map(|keycap| preview_keycap_size(keycap.width_units).x)
@@ -283,23 +299,46 @@ fn draw_preview_keycaps_marquee(ui: &mut egui::Ui, preview_keycaps: &[keyboard::
         egui::Sense::hover(),
     );
     let painter = ui.painter().with_clip_rect(rect);
+    let max_scroll = (total_width - rect.width()).max(0.0);
+    let current_len = preview_keycaps.len();
 
-    ui.ctx()
-        .request_repaint_after(std::time::Duration::from_millis(16));
-    let loop_width = (total_width + PREVIEW_KEYCAP_GAP).max(rect.width());
-    let progress = (ui.input(|input| input.time) as f32 * PREVIEW_SCROLL_SPEED) % loop_width;
-    let start_x = rect.left() - progress;
+    if !scroll_state.initialized {
+        scroll_state.current = max_scroll;
+        scroll_state.target = max_scroll;
+        scroll_state.last_len = current_len;
+        scroll_state.initialized = true;
+    } else if max_scroll <= 0.0 {
+        scroll_state.current = 0.0;
+        scroll_state.target = 0.0;
+        scroll_state.last_len = current_len;
+    } else if current_len > scroll_state.last_len {
+        scroll_state.target = max_scroll;
+        scroll_state.last_len = current_len;
+    } else if current_len < scroll_state.last_len || scroll_state.target > max_scroll {
+        scroll_state.current = max_scroll;
+        scroll_state.target = max_scroll;
+        scroll_state.last_len = current_len;
+    }
 
-    for copy in 0..=1 {
-        let mut x = start_x + copy as f32 * loop_width;
-        for keycap in preview_keycaps {
-            let size = preview_keycap_size(keycap.width_units);
-            let key_rect = Rect::from_min_size(pos2(x, rect.top()), size);
-            if key_rect.intersects(rect) {
-                paint_preview_keycap(&painter, key_rect, &keycap.layout);
-            }
-            x += size.x + PREVIEW_KEYCAP_GAP;
+    if (scroll_state.current - scroll_state.target).abs() > 0.5 {
+        let dt = ui.input(|input| input.stable_dt).max(1.0 / 60.0);
+        let step = PREVIEW_SCROLL_SPEED * dt;
+        scroll_state.current =
+            (scroll_state.current + step).min(scroll_state.target);
+        ui.ctx()
+            .request_repaint_after(std::time::Duration::from_millis(16));
+    } else {
+        scroll_state.current = scroll_state.target;
+    }
+
+    let mut x = rect.left() - scroll_state.current;
+    for keycap in preview_keycaps {
+        let size = preview_keycap_size(keycap.width_units);
+        let key_rect = Rect::from_min_size(pos2(x, rect.top()), size);
+        if key_rect.intersects(rect) {
+            paint_preview_keycap(&painter, key_rect, &keycap.layout);
         }
+        x += size.x + PREVIEW_KEYCAP_GAP;
     }
 }
 
