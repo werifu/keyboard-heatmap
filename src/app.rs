@@ -13,6 +13,7 @@ use crate::{
     press_time_map::PressTimesMap,
     tray::{TrayCommand, TrayController},
     typing_log::TypingLog,
+    window_visibility,
 };
 use chrono::prelude::DateTime;
 use eframe::{App, CreationContext, Frame};
@@ -30,6 +31,7 @@ pub struct State {
     hue: f32,
     start_time: DateTime<chrono::Local>,
     show_log_window: bool,
+    recording_enabled: bool,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -64,6 +66,16 @@ impl eframe::App for KeyboardHeatmap {
             match command {
                 TrayCommand::ToggleWindow => {
                     self.set_window_visibility(ctx, frame, !self.window_visible);
+                }
+                TrayCommand::ToggleRecording => {
+                    let mut state = self.state.lock().unwrap();
+                    state.recording_enabled = !state.recording_enabled;
+                }
+                TrayCommand::ClearData => {
+                    let mut state = self.state.lock().unwrap();
+                    state.start_time = chrono::Local::now();
+                    self.press_map.lock().unwrap().map.clear();
+                    self.typing_log.lock().unwrap().clear();
                 }
                 TrayCommand::Quit => {
                     self.allow_root_close = true;
@@ -159,6 +171,10 @@ impl eframe::App for KeyboardHeatmap {
                 });
 
                 ui.label(format!("{} presses", press_map.total_presses()));
+                if !state.recording_enabled {
+                    ui.separator();
+                    ui.label("Paused");
+                }
             });
         });
 
@@ -246,11 +262,7 @@ impl KeyboardHeatmap {
     }
 
     fn set_window_visibility(&mut self, ctx: &egui::Context, _frame: &Frame, visible: bool) {
-        ctx.send_viewport_cmd(ViewportCommand::Visible(visible));
-        if visible {
-            ctx.send_viewport_cmd(ViewportCommand::Minimized(false));
-            ctx.send_viewport_cmd(ViewportCommand::Focus);
-        }
+        window_visibility::set_window_visibility(_frame, ctx, visible);
         self.window_visible = visible;
     }
 
@@ -286,6 +298,7 @@ fn default_state() -> State {
         hue: 220. / 360.,
         start_time: chrono::Local::now(),
         show_log_window: false,
+        recording_enabled: true,
     }
 }
 
@@ -300,6 +313,7 @@ fn load_state() -> (State, PressTimesMap) {
             hue: saved.hue,
             start_time: saved.start_time,
             show_log_window: saved.show_log_window,
+            recording_enabled: true,
         },
         PressTimesMap::from_persisted_entries(saved.press_entries),
     )
@@ -500,9 +514,13 @@ pub fn setup_ui(
     {
         let press_map = press_map.clone();
         let typing_log = typing_log.clone();
+        let state = state.clone();
         let egui_ctx = cc.egui_ctx.clone();
         thread::spawn(move || loop {
             if let Ok(event) = receiver.recv() {
+                if !state.lock().unwrap().recording_enabled {
+                    continue;
+                }
                 let mut press_map = press_map.lock().unwrap();
                 let mut typing_log = typing_log.lock().unwrap();
                 if let rdev::EventType::KeyPress(key) = event.event_type {

@@ -8,6 +8,7 @@ mod listen;
 mod press_time_map;
 mod tray;
 mod typing_log;
+mod window_visibility;
 
 fn main() -> eframe::Result {
     let initial_keyboard_type = app::initial_keyboard_type();
