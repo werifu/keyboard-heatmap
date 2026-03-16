@@ -28,6 +28,13 @@ impl KeyboardType {
             KeyboardType::Qwerty87 => "87 Keys",
         }
     }
+
+    pub fn window_size(&self) -> Vec2 {
+        match self {
+            KeyboardType::QwertyMac => Vec2::new(900.0, 450.0),
+            KeyboardType::Qwerty87 => Vec2::new(1120.0, 450.0),
+        }
+    }
 }
 
 pub fn key_preview_spec(keyboard_type: KeyboardType, key: rdev::Key) -> Option<KeyPreviewSpec> {
