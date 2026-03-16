@@ -269,10 +269,12 @@ const PREVIEW_KEYCAP_HEIGHT: f32 = 34.0;
 const PREVIEW_KEYCAP_BASE_WIDTH: f32 = 34.0;
 const PREVIEW_KEYCAP_GAP: f32 = 6.0;
 const PREVIEW_VIEWPORT_WIDTH: f32 = 260.0;
+const PREVIEW_VISIBLE_ROWS: usize = 3;
 
 fn draw_preview_keycaps_grid(ui: &mut egui::Ui, preview_keycaps: &[keyboard::KeyPreviewSpec]) {
     let rows = preview_keycap_rows(preview_keycaps, PREVIEW_VIEWPORT_WIDTH);
-    let row_count = rows.len().max(1) as f32;
+    let visible_rows = preview_visible_rows(&rows);
+    let row_count = PREVIEW_VISIBLE_ROWS.max(1) as f32;
     let height = row_count * PREVIEW_KEYCAP_HEIGHT + (row_count - 1.0) * PREVIEW_KEYCAP_GAP;
     let (rect, _) = ui.allocate_exact_size(
         Vec2::new(PREVIEW_VIEWPORT_WIDTH, height),
@@ -281,13 +283,8 @@ fn draw_preview_keycaps_grid(ui: &mut egui::Ui, preview_keycaps: &[keyboard::Key
     let painter = ui.painter().with_clip_rect(rect);
 
     let mut y = rect.top();
-    for row in rows {
-        let row_width = row
-            .iter()
-            .map(|keycap| preview_keycap_size(keycap.width_units).x)
-            .sum::<f32>()
-            + PREVIEW_KEYCAP_GAP * row.len().saturating_sub(1) as f32;
-        let mut x = rect.left() + (rect.width() - row_width).max(0.0);
+    for row in visible_rows {
+        let mut x = rect.left();
 
         for keycap in row {
             let size = preview_keycap_size(keycap.width_units);
@@ -304,11 +301,11 @@ fn preview_keycap_rows(
     preview_keycaps: &[keyboard::KeyPreviewSpec],
     viewport_width: f32,
 ) -> Vec<Vec<keyboard::KeyPreviewSpec>> {
-    let mut rows_reversed: Vec<Vec<keyboard::KeyPreviewSpec>> = Vec::new();
     let mut current_row: Vec<keyboard::KeyPreviewSpec> = Vec::new();
+    let mut rows: Vec<Vec<keyboard::KeyPreviewSpec>> = Vec::new();
     let mut current_width = 0.0;
 
-    for keycap in preview_keycaps.iter().rev() {
+    for keycap in preview_keycaps {
         let key_width = preview_keycap_size(keycap.width_units).x;
         let next_width = if current_row.is_empty() {
             key_width
@@ -317,12 +314,8 @@ fn preview_keycap_rows(
         };
 
         if !current_row.is_empty() && next_width > viewport_width {
-            current_row.reverse();
-            rows_reversed.push(std::mem::take(&mut current_row));
-            if rows_reversed.len() == 2 {
-                break;
-            }
-            current_row = vec![keycap.clone()];
+            rows.push(std::mem::take(&mut current_row));
+            current_row.push(keycap.clone());
             current_width = key_width;
         } else {
             current_row.push(keycap.clone());
@@ -330,17 +323,25 @@ fn preview_keycap_rows(
         }
     }
 
-    if rows_reversed.len() < 2 && !current_row.is_empty() {
-        current_row.reverse();
-        rows_reversed.push(current_row);
+    if !current_row.is_empty() {
+        rows.push(current_row);
     }
 
-    rows_reversed.reverse();
-    rows_reversed
+    rows
+}
+
+fn preview_visible_rows(
+    rows: &[Vec<keyboard::KeyPreviewSpec>],
+) -> &[Vec<keyboard::KeyPreviewSpec>] {
+    let start = rows.len().saturating_sub(PREVIEW_VISIBLE_ROWS);
+    &rows[start..]
 }
 
 fn preview_keycap_size(width_units: f32) -> Vec2 {
-    Vec2::new(PREVIEW_KEYCAP_BASE_WIDTH * width_units, PREVIEW_KEYCAP_HEIGHT)
+    Vec2::new(
+        PREVIEW_KEYCAP_BASE_WIDTH * width_units,
+        PREVIEW_KEYCAP_HEIGHT,
+    )
 }
 
 fn paint_preview_keycap(painter: &egui::Painter, rect: Rect, layout: &KeyTextsLayout) {

@@ -38,9 +38,12 @@ pub fn key_preview_spec(keyboard_type: KeyboardType, key: rdev::Key) -> Option<K
         return Some(label);
     }
 
-    if let Some(label) = NUM_KEY_LINE_PAIRS.iter().find_map(|(top, bottom, candidate)| {
-        (*candidate == key).then(|| double_label(*top, *bottom, 1.0))
-    }) {
+    if let Some(label) = NUM_KEY_LINE_PAIRS
+        .iter()
+        .find_map(|(top, bottom, candidate)| {
+            (*candidate == key).then(|| double_label(*top, *bottom, 1.0))
+        })
+    {
         return Some(label);
     }
 

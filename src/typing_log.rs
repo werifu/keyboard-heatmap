@@ -6,7 +6,6 @@ use crate::{
 };
 
 const DEFAULT_LOG_CAPACITY: usize = 1024;
-const PREVIEW_ITEMS: usize = 10;
 
 struct LoggedKey {
     key: rdev::Key,
@@ -58,10 +57,8 @@ impl TypingLog {
     }
 
     pub fn preview_keycaps(&self, keyboard_type: KeyboardType) -> Vec<KeyPreviewSpec> {
-        let preview_len = self.entries.len().saturating_sub(PREVIEW_ITEMS);
         self.entries
             .iter()
-            .skip(preview_len)
             .map(|entry| keycap_for_event(entry, keyboard_type))
             .collect()
     }
