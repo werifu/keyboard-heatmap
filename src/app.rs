@@ -11,10 +11,11 @@ use crate::{
     keyboard::{self, KeyboardType},
     listen,
     press_time_map::PressTimesMap,
+    tray::{TrayCommand, TrayController},
     typing_log::TypingLog,
 };
 use chrono::prelude::DateTime;
-use eframe::{App, CreationContext};
+use eframe::{App, CreationContext, Frame};
 use egui::{
     pos2, vec2, Align, Align2, Color32, Event, FontId, Layout, Margin, Rect, ScrollArea, Stroke,
     Theme, UserData, Vec2, ViewportCommand, Window,
@@ -45,20 +46,33 @@ struct KeyboardHeatmap {
     state: Arc<Mutex<State>>,
     press_map: Arc<Mutex<PressTimesMap>>,
     typing_log: Arc<Mutex<TypingLog>>,
+    tray_controller: Option<TrayController>,
     pending_screenshot_path: Option<PathBuf>,
     viewport_keyboard_type: KeyboardType,
+    window_visible: bool,
+    allow_root_close: bool,
 }
 
 impl eframe::App for KeyboardHeatmap {
-    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        let Self {
-            state,
-            press_map: _,
-            typing_log: _,
-            pending_screenshot_path: _,
-            viewport_keyboard_type: _,
-        } = self;
-        let mut state = state.lock().unwrap();
+    fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
+        if ctx.input(|input| input.viewport().close_requested()) && !self.allow_root_close {
+            ctx.send_viewport_cmd(ViewportCommand::CancelClose);
+            self.set_window_visibility(ctx, frame, false);
+        }
+
+        for command in self.poll_tray_commands() {
+            match command {
+                TrayCommand::ToggleWindow => {
+                    self.set_window_visibility(ctx, frame, !self.window_visible);
+                }
+                TrayCommand::Quit => {
+                    self.allow_root_close = true;
+                    ctx.send_viewport_cmd(ViewportCommand::Close);
+                }
+            }
+        }
+
+        let mut state = self.state.lock().unwrap();
         let mut resize_viewport = false;
 
         let frame = egui::Frame::new()
@@ -209,6 +223,7 @@ impl KeyboardHeatmap {
         state: Arc<Mutex<State>>,
         press_map: Arc<Mutex<PressTimesMap>>,
         typing_log: Arc<Mutex<TypingLog>>,
+        tray_controller: Option<TrayController>,
     ) -> Self {
         let viewport_keyboard_type = state.lock().unwrap().keyboard_type;
         Self {
@@ -216,8 +231,27 @@ impl KeyboardHeatmap {
             state,
             press_map,
             typing_log,
+            tray_controller,
             pending_screenshot_path: None,
+            window_visible: true,
+            allow_root_close: false,
         }
+    }
+
+    fn poll_tray_commands(&self) -> Vec<TrayCommand> {
+        self.tray_controller
+            .as_ref()
+            .map(TrayController::poll)
+            .unwrap_or_default()
+    }
+
+    fn set_window_visibility(&mut self, ctx: &egui::Context, _frame: &Frame, visible: bool) {
+        ctx.send_viewport_cmd(ViewportCommand::Visible(visible));
+        if visible {
+            ctx.send_viewport_cmd(ViewportCommand::Minimized(false));
+            ctx.send_viewport_cmd(ViewportCommand::Focus);
+        }
+        self.window_visible = visible;
     }
 
     fn save_to_disk(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
@@ -448,6 +482,7 @@ pub fn setup_ui(
     cc: &CreationContext<'_>,
 ) -> Result<Box<dyn App>, Box<dyn std::error::Error + Send + Sync>> {
     cc.egui_ctx.set_theme(Theme::Light);
+    TrayController::install_repaint_forwarder(&cc.egui_ctx);
 
     let (sender, receiver) = mpsc::sync_channel(1);
     let (saved_state, saved_press_map) = load_state();
@@ -479,5 +514,11 @@ pub fn setup_ui(
         });
     }
 
-    Ok(Box::new(KeyboardHeatmap::new(state, press_map, typing_log)))
+    let tray_controller = TrayController::new().ok();
+    Ok(Box::new(KeyboardHeatmap::new(
+        state,
+        press_map,
+        typing_log,
+        tray_controller,
+    )))
 }

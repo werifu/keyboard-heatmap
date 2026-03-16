@@ -6,6 +6,7 @@ mod key_box;
 mod keyboard;
 mod listen;
 mod press_time_map;
+mod tray;
 mod typing_log;
 
 fn main() -> eframe::Result {
