@@ -17,3 +17,6 @@ Cargo.lock
 Untitled.png
 
 .DS_Store
+
+/target-xwin/
+/dist/

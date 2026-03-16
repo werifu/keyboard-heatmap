@@ -179,6 +179,9 @@ mod tests {
         let clear_event = MenuEvent {
             id: tray_icon::menu::MenuId::new(CLEAR_DATA_ID),
         };
+        let quit_event = MenuEvent {
+            id: tray_icon::menu::MenuId::new(QUIT_ID),
+        };
 
         assert_eq!(
             menu_event_command(&pause_event),
@@ -188,5 +191,6 @@ mod tests {
             menu_event_command(&clear_event),
             Some(TrayCommand::ClearData)
         );
+        assert_eq!(menu_event_command(&quit_event), Some(TrayCommand::Quit));
     }
 }

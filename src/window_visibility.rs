@@ -3,9 +3,9 @@ use eframe::{egui, Frame};
 #[cfg(target_os = "windows")]
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 
-pub fn set_window_visibility(frame: &Frame, ctx: &egui::Context, visible: bool) {
+pub fn set_window_visibility(_frame: &Frame, ctx: &egui::Context, visible: bool) {
     #[cfg(target_os = "windows")]
-    windows::set_native_window_visibility(frame, visible);
+    windows::set_native_window_visibility(_frame, visible);
 
     ctx.send_viewport_cmd(egui::ViewportCommand::Visible(visible));
     if visible {
